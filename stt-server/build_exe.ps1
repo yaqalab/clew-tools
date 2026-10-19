@@ -13,8 +13,13 @@ $ErrorActionPreference = "Stop"
 Set-Location $PSScriptRoot
 
 $venv = Join-Path $env:TEMP "clew-stt-server-build"
-if (-not (Test-Path $venv)) { python -m venv $venv }
 $py = Join-Path $venv "Scripts\python.exe"
+# Windows' Temp clean-up can remove part of it (2026-10-19: the folder stayed, python.exe went):
+# made again whenever its Python is missing.
+if (-not (Test-Path $py)) {
+  if (Test-Path $venv) { Remove-Item -Recurse -Force $venv }
+  python -m venv $venv
+}
 & $py -m pip install --quiet --disable-pip-version-check pyinstaller -e ".[local]"
 if ($LASTEXITCODE -ne 0) { throw "pip install failed" }
 

@@ -1,0 +1,52 @@
+# clew-tools as one Python package (docs/33): the audio server for macOS and Linux (and Windows
+# without the native program), with dictation as an optional extra.
+#
+#   pipx install "clew-tools @ git+https://github.com/yaqalab/clew-tools"
+#   pipx install "clew-tools[dictation] @ git+https://github.com/yaqalab/clew-tools"
+#
+# The Windows installer does not use this file (audio-server/native, stt-server/build_exe.ps1).
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "clew-tools"
+dynamic = ["version"]
+description = "Lets Clew (clew.alefa.net) play the recordings in your folders, and run dictation, on your own computer."
+readme = "README.md"
+license = { text = "MIT" }
+authors = [{ name = "F. R. Andriariniaina", email = "alefa-support@googlegroups.com" }]
+requires-python = ">=3.10"
+# The audio server needs nothing beyond Python's standard library.
+dependencies = []
+
+[project.optional-dependencies]
+# The dictation server (stt-server) and its engine; the same as stt-server's own base and [local].
+dictation = [
+    "fastapi>=0.110",
+    "uvicorn[standard]>=0.29",
+    "python-multipart>=0.0.9",
+    "numpy>=1.24",
+    "faster-whisper>=1.2.1",
+    "av>=11",
+    "sherpa-onnx>=1.12",
+]
+
+[project.urls]
+Homepage = "https://github.com/yaqalab/clew-tools"
+Clew = "https://clew.alefa.net"
+
+[project.scripts]
+clew-audio-server = "clew_audio_server:main"
+clew-stt-server = "alefa_stt.__main__:main"
+
+[tool.setuptools]
+py-modules = ["clew_audio_server"]
+packages = ["clew_audio", "alefa_stt"]
+
+[tool.setuptools.package-dir]
+"" = "audio-server"
+alefa_stt = "stt-server/alefa_stt"
+
+[tool.setuptools.dynamic]
+version = { file = "VERSION" }

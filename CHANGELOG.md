@@ -2,6 +2,30 @@
 
 Each section is the text of that version's release on GitHub.
 
+## 1.2.0 — 2026-10-19
+
+**macOS and Linux.** The Python audio server becomes a package you install with
+[pipx](https://pipx.pypa.io), with the same features as the Windows program:
+
+```
+pipx install "clew-tools @ git+https://github.com/yaqalab/clew-tools"
+clew-audio-server --gui
+```
+
+- **A settings window** (optional; `--gui`): folders with on/off, connection, secret, conversion,
+  dictation and updates, in English or Japanese. Without it, the server runs in a terminal as
+  before.
+- **The secret can be shown again:** it is kept in the macOS Keychain, the Linux desktop's keyring,
+  or a file only you can read. `--show-secret` prints it.
+- **Start at login:** `--autostart on` (no window) or `--autostart gui`; `--autostart off` undoes it.
+- **Dictation on your computer:** install with the `dictation` extra (see the README); download a
+  model from the window or with `--download-model small`.
+- **New versions:** a daily check you can turn off; it tells you, and `pipx upgrade clew-tools`
+  updates.
+- `https://clew.alefa.net` is allowed on a first start, as on Windows.
+
+The Windows program is unchanged in this version.
+
 ## 1.1.0 — 2026-10-19
 
 The first public release.

@@ -1,0 +1,3 @@
+# A local `pip install .` builds here.
+/build/
+*.egg-info/

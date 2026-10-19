@@ -705,7 +705,8 @@ class StartFromEnv(unittest.TestCase):
         )
         self.assertIn("https://temp.example", run.out)
         saved = json.loads((run.dir / "c.json").read_text(encoding="utf-8"))
-        self.assertNotIn("origins", saved)
+        # Only the first start's default is remembered, never the .env's.
+        self.assertEqual(saved.get("origins"), ["https://clew.alefa.net"])
 
     def test_a_bad_line_is_warned_about_and_the_rest_still_applies(self):
         run = self.start(["CLEW_AUDIO_FOLDER={env}", "CLEW_AUDIO_PORT={port}", "CLEW_AUDIO_TYPO=1"])

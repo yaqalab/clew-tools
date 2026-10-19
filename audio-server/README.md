@@ -5,16 +5,31 @@ file with the browser's chooser each visit. Design and security model: `docs/22-
 
 **On Windows, use the native server instead:** `native/` (a tray icon, a settings window, an
 installer, conversion with Windows' own codecs; no Python, no ffmpeg; `docs/22` §10). This Python
-server stays as a backup and for macOS and Linux. The two keep different secrets.
+server is the one for macOS and Linux (installed with pipx: the top-level README), and a backup on
+Windows. The two keep different secrets.
 
 ## Run it (development)
 
 ```
 python tools/audio-server/clew_audio_server.py --folder D:\interviews
+python tools/audio-server/clew_audio_server.py --gui
 ```
 
-Python 3.10+, standard library only. The first start prints a **secret, once** — paste it into
-Clew ("From server"). Later starts remember the folders and the secret's hash:
+Python 3.10+, standard library only. The first start prints the **secret** — paste it into Clew
+("From the audio server…"). Later starts remember the folders and the secret's hash. With the
+`clew_audio/` package beside this file (always, when installed), the secret is also kept where it
+can be shown again: the macOS Keychain, the desktop's keyring (`secret-tool`), else
+`secrets.json` beside the settings, readable by this user only (`CLEW_KEYSTORE=file` forces it).
+
+| Option (with `clew_audio/`) | |
+|---|---|
+| `--gui` | the settings window (Tkinter): the server runs while it is open; closing it stops the server |
+| `--show-secret` | print the secret and the dictation key again |
+| `--autostart on` / `gui` / `off` | start at login without / with the window (launchd on macOS; a systemd user service, or a desktop autostart entry with the window, on Linux) |
+| `--dictation` | also run dictation (the `dictation` extra: `clew-tools[dictation]`); its settings are the window's Dictation tab, saved in `config.json` |
+| `--download-model <name>` | fetch a dictation model (`tiny` … `large-v3`) into the models folder |
+| `--check-update` | ask GitHub whether a newer version is out (a daily check also runs at start unless turned off in the window) |
+| `--version` | the installed version |
 
 | Option | |
 |---|---|
@@ -24,7 +39,7 @@ Clew ("From server"). Later starts remember the folders and the secret's hash:
 | `--port <n>` | default 47821 |
 | `--allow-origin <url>` | a hosted Clew's origin (`https://…`); remembered. `http://localhost:*` and `127.0.0.1` are always allowed |
 | `--reset-secret` | a new secret; the old one stops working |
-| `--config <file>` | where settings are kept; default `%APPDATA%\clew-audio-server\config.json` |
+| `--config <file>` | where settings are kept; default `%APPDATA%\clew-audio-server\config.json`, else `$XDG_CONFIG_HOME` or `~/.config/clew-audio-server/config.json` |
 
 It listens on 127.0.0.1 only.
 

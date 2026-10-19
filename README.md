@@ -34,17 +34,40 @@ For dictation, open the **Dictation** tab, download a model (`small` suits most 
 The audio server then starts with Windows (you can untick that), and Clew finds it by itself.
 Its icon sits by the clock; one click opens the settings.
 
-### macOS and Linux
+## Install on macOS and Linux
 
-The Python version of the audio server works there. It needs Python 3.10 or newer and nothing
-else:
+The audio server is a Python program there, with the same features as on Windows and an optional
+settings window. It needs Python 3.10 or newer, installed with [pipx](https://pipx.pypa.io)
+(`brew install pipx` on macOS, `sudo apt install pipx` on Ubuntu and Debian):
 
 ```
-python audio-server/clew_audio_server.py --folder ~/interviews --allow-origin https://clew.alefa.net
+pipx install "clew-tools @ git+https://github.com/yaqalab/clew-tools"
+clew-audio-server --gui
 ```
 
-The first start prints the secret once; paste it into Clew. Details:
-[audio-server/README.md](audio-server/README.md).
+1. In the window, press **Add…** under *Folders* and choose the folder of your recordings.
+2. Press **Copy** next to the secret, and paste it in Clew under **From the audio server…**.
+3. Tick **Start at login** if you want it there each time.
+
+The window needs Tkinter, which comes with Python from python.org. With Homebrew's Python, add
+`brew install python-tk`; on Ubuntu and Debian, `sudo apt install python3-tk`. Without a window,
+the server runs in a terminal: `clew-audio-server --folder ~/interviews` prints the secret, and
+`clew-audio-server --autostart on` starts it at login.
+
+**Dictation** needs more libraries (about 1 GB, from PyPI) and then a model:
+
+```
+pipx install --force "clew-tools[dictation] @ git+https://github.com/yaqalab/clew-tools"
+```
+
+Then download a model in the window's **Dictation** tab (`small` suits most computers), copy its
+key into Clew under **Settings › Dictation › This computer**, and press **Start**.
+
+**Updating:** `pipx upgrade clew-tools`. The window's **Updates** tab tells you when there is a new
+version; it never installs anything by itself.
+
+On macOS nothing here needs Apple's approval: pipx installs the source, and Python runs it. All
+options: [audio-server/README.md](audio-server/README.md).
 
 ## How clew.alefa.net uses these programs
 
@@ -78,7 +101,9 @@ the secret; dictation needs its key. Both are made from Windows' secure random g
 stored **encrypted for your Windows account** (DPAPI), so another account, or a copy of the
 settings file on another computer, can't read them. Wrong guesses slow the server down. When
 you copy the secret, it's kept out of Windows' clipboard history and cloud clipboard. **New
-secret** makes the old one stop working at once.
+secret** makes the old one stop working at once. On macOS and Linux the server checks the secret
+against a scrypt hash, and keeps the secret itself in the **macOS Keychain** or the **desktop's
+keyring** (GNOME Keyring, KWallet), or, where there is none, in a file only your account can read.
 
 **Only your folders.** The audio server sends files from the folders you added (and their
 subfolders), and nothing else, however a request is written: no `..`, no other drives, no
@@ -96,6 +121,8 @@ drive, for example). Deleting that folder is safe.
 **Conversion runs in a sandbox.** A damaged recording could make a codec misbehave, so conversion
 runs in a separate, locked-down process: low integrity (it can write almost nowhere), one process
 at most, limited memory and time, no clipboard or desktop, and Windows' exploit protections on.
+On macOS and Linux, conversion uses ffmpeg (if you have it) as a separate process at the lowest
+priority, with your account's rights, as any media player on your computer does.
 
 **Little to find.** The activity list in the window keeps the method, path and status of recent
 requests, in memory only, never a secret or a link's signature. Nothing about your work is
@@ -168,7 +195,8 @@ problem, please write to alefa-support@googlegroups.com instead of opening a pub
 | Folder | |
 |---|---|
 | [audio-server/native/](audio-server/native/) | The Windows program: C++17, Windows APIs only, no third-party code. Tray, settings window, installer (Inno Setup) |
-| [audio-server/](audio-server/) | The Python audio server (standard library only): macOS, Linux, or a backup on Windows |
+| [audio-server/](audio-server/) | The Python audio server (standard library only): macOS, Linux, or a backup on Windows. `clew_audio_server.py` runs alone; the `clew_audio/` package beside it adds the window (Tkinter), the keystore, start at login, dictation and the update check |
+| [pyproject.toml](pyproject.toml) | The `clew-tools` package pipx installs (the audio server, and with `[dictation]` the dictation server and faster-whisper) |
 | [stt-server/](stt-server/) | The dictation server: Python, faster-whisper, packed with PyInstaller for Windows |
 
 Build and test instructions are in each folder's README. The version is in [VERSION](VERSION).

@@ -58,6 +58,7 @@ from urllib.parse import parse_qs, quote, urlsplit
 API_VERSION = 1
 APP_NAME = "clew-audio-server"
 DEFAULT_PORT = 47821
+HOSTED_CLEW = "https://clew.alefa.net"
 # Long enough for a long interview, short enough that a link copied somewhere is soon useless.
 LINK_TTL_SEC = 4 * 60 * 60
 MAX_FILES = 20_000
@@ -218,7 +219,11 @@ class Config:
 
     @property
     def origins(self) -> list[str]:
+        """The hosted Clews allowed besides this computer's. A first start allows clew.alefa.net, so
+        the website works without a step more (docs/32); a saved list, even empty, wins."""
         v = self.data.get("origins")
+        if v is None:
+            return [HOSTED_CLEW]
         return [o for o in v if isinstance(o, str)] if isinstance(v, list) else []
 
     def has_secret(self) -> bool:
@@ -628,6 +633,8 @@ class State:
         self.link_key = secrets.token_bytes(32)
         self.failures = 0
         self.lock = threading.Lock()
+        # Where a request's line goes (method, path, status): stderr, or the window's activity list.
+        self.log: Any = None
 
     def origin_ok(self, origin: str) -> bool:
         return bool(LOOPBACK_ORIGIN.match(origin)) or origin in self.origins
@@ -672,7 +679,11 @@ def make_handler(state: State) -> type[BaseHTTPRequestHandler]:
         def log_message(self, format: str, *args: Any) -> None:  # noqa: A002
             # Method and path only; a link's query carries its signature.
             path = urlsplit(self.path).path
-            sys.stderr.write(f"{self.command} {path} -> {args[1] if len(args) > 1 else ''}\n")
+            line = f"{self.command} {path} -> {args[1] if len(args) > 1 else ''}"
+            if state.log is not None:
+                state.log(line)
+            else:
+                sys.stderr.write(line + "\n")
 
         def _cors(self) -> None:
             origin = self.headers.get("Origin")
@@ -898,6 +909,94 @@ def ask_folder() -> str:
     return input("Folder with your audio files: ").strip().strip('"')
 
 
+def _extras() -> Any:
+    """The clew_audio package (docs/33), or None when this file runs alone."""
+    try:
+        import clew_audio  # noqa: PLC0415
+
+        return clew_audio
+    except ImportError:
+        return None
+
+
+def _need_extras(what: str) -> Any:
+    extras = _extras()
+    if extras is None:
+        raise SystemExit(f"{what} needs the clew_audio package beside this file (install clew-tools with pipx).")
+    return extras
+
+
+def _config_path(args: argparse.Namespace) -> Path:
+    env_config = os.environ.get("CLEW_AUDIO_CONFIG")
+    return args.config or (Path(env_config).expanduser() if env_config else default_config_path())
+
+
+def _extras_command(args: argparse.Namespace) -> int | None:
+    """The options that do one thing and quit, or open the window. None: run the server as usual."""
+    if args.version:
+        extras = _extras()
+        print(f"{APP_NAME} {extras.version() if extras else 'unknown'}")
+        return 0
+    if args.gui:
+        _need_extras("--gui")
+        from clew_audio import gui  # noqa: PLC0415
+
+        return gui.run(_config_path(args), minimized=args.minimized)
+    if args.show_secret:
+        _need_extras("--show-secret")
+        from clew_audio.keystore import open_store  # noqa: PLC0415
+
+        store = open_store(_config_path(args).parent)
+        secret, key = store.get("secret"), store.get("stt-key")
+        if not secret:
+            print("The secret was shown once when it was made and not kept. --reset-secret makes one that is.")
+        else:
+            print(f"Secret: {secret}")
+        if key:
+            print(f"Dictation key: {key}")
+        return 0 if secret else 1
+    if args.autostart:
+        _need_extras("--autostart")
+        from clew_audio import autostart  # noqa: PLC0415
+
+        if args.autostart == "off":
+            autostart.disable()
+            print("It no longer starts at login.")
+        else:
+            for path in autostart.enable(gui=args.autostart == "gui"):
+                print(f"Starts at login: {path}")
+        return 0
+    if args.download_model:
+        _need_extras("--download-model")
+        from clew_audio import dictation  # noqa: PLC0415
+
+        why = dictation.available()
+        if why:
+            raise SystemExit(f"Dictation: {why}.")
+        models = Config.load(_config_path(args)).data.get("dictation", {}).get("modelsDir") or str(
+            dictation.default_models_dir()
+        )
+        return subprocess.call(
+            [sys.executable, "-m", "alefa_stt", "download", args.download_model, "--models-dir", models],
+            env=dictation._env(),
+        )
+    if args.check_update:
+        _need_extras("--check-update")
+        from clew_audio import updates  # noqa: PLC0415
+
+        try:
+            latest = updates.fetch_latest()
+        except (OSError, ValueError) as e:
+            print(f"Could not ask GitHub: {e}")
+            return 1
+        if updates.newer(latest):
+            print(f"Version {latest} is out (this is {_extras().version()}). Update with: {updates.UPGRADE}")
+        else:
+            print(f"This is the latest version ({latest}).")
+        return 0
+    return None
+
+
 def main(argv: list[str] | None = None) -> int:
     p = argparse.ArgumentParser(description="Serve the audio files of your folders to Clew.")
     p.add_argument(
@@ -931,7 +1030,20 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--reset-secret", action="store_true", help="make a new secret; the old one stops working")
     p.add_argument("--config", type=Path, default=None, help="where the settings are kept")
     p.add_argument("--env", type=Path, default=None, help="a .env file; default: .env beside this program")
+    # What the clew_audio package beside this file adds (docs/33); without it these say so.
+    p.add_argument("--gui", action="store_true", help="open the settings window (Tkinter); the server runs with it")
+    p.add_argument("--minimized", action="store_true", help=argparse.SUPPRESS)
+    p.add_argument("--show-secret", action="store_true", help="print the secret again and quit")
+    p.add_argument("--autostart", choices=["on", "off", "gui"],
+                   help="start at login: on (no window), gui (with the window), off")
+    p.add_argument("--dictation", action="store_true", help="also run dictation on this computer")
+    p.add_argument("--download-model", metavar="NAME", help="fetch a dictation model (tiny, base, small...) and quit")
+    p.add_argument("--check-update", action="store_true", help="say whether a newer version is out, and quit")
+    p.add_argument("--version", action="store_true", help="print the version and quit")
     args = p.parse_args(argv)
+    extra = _extras_command(args)
+    if extra is not None:
+        return extra
 
     # A console in a legacy code page (cp932, cp1252...) must never crash the start-up: the secret is
     # shown once, and a failed print after it was saved would lose it.
@@ -950,10 +1062,23 @@ def main(argv: list[str] | None = None) -> int:
         warnings.append(f"CLEW_AUDIO_FFMPEG is not a file: {env['CLEW_AUDIO_FFMPEG']}")
     env_config = env.get("CLEW_AUDIO_CONFIG")
     config = Config.load(args.config or (Path(env_config).expanduser() if env_config else default_config_path()))
+    saved_port = config.data.get("port")
+    if not args.port and not env.get("CLEW_AUDIO_PORT") and isinstance(saved_port, int) and saved_port > 0:
+        port = saved_port  # chosen in the settings window
+    extras = _extras()
+    keys = None
+    if extras is not None:
+        from clew_audio.keystore import open_store  # noqa: PLC0415
+
+        keys = open_store(config.path.parent)
     shown_secret: str | None = None
     if args.reset_secret or not config.has_secret():
         shown_secret = new_secret()
         config.set_secret(shown_secret)
+        # Kept where the window (and --show-secret) can show it again: the Keychain, the keyring,
+        # or a file readable by this user only.
+        if keys is not None:
+            keys.set("secret", shown_secret)
 
     # The command line beats the .env (whose CLEW_AUDIO_FOLDER may hold several, separated by
     # os.pathsep); both add to the remembered list, or turn a folder on.
@@ -1024,11 +1149,51 @@ def main(argv: list[str] | None = None) -> int:
     )
     if shown_secret:
         print()
-        print("Secret (shown once - paste it into Clew):")
+        print("Secret (paste it into Clew):" if keys else "Secret (shown once - paste it into Clew):")
         print(f"    {shown_secret}")
         print()
+        if keys is not None:
+            print(f"Kept in {keys.where}; --show-secret prints it again.")
+    elif keys is not None and keys.get("secret"):
+        print("Secret: --show-secret prints it (--reset-secret makes a new one).")
     else:
         print("Secret: the one shown at the first start (--reset-secret makes a new one).")
+
+    stt = None
+    if extras is not None:
+        from clew_audio import dictation, updates  # noqa: PLC0415
+
+        settings = config.data.get("dictation") if isinstance(config.data.get("dictation"), dict) else {}
+        if args.dictation or settings.get("enabled") is True:
+            stt = dictation.Dictation(log=lambda line: print(f"[dictation] {line}"))
+            why = dictation.available()
+            if why:
+                print(f"Dictation: {why}.")
+                stt = None
+            else:
+                key = keys.get("stt-key") if keys else None
+                if not key:
+                    key = f"stt.local.{secrets.token_urlsafe(24)}"
+                    keys.set("stt-key", key)  # type: ignore[union-attr]
+                names = folder_names([e["path"] for e in entries])
+                stt_port = settings.get("port") if isinstance(settings.get("port"), int) else dictation.DEFAULT_PORT
+                stt.start(dictation.Config(
+                    model=settings.get("model") or dictation.DEFAULT_MODEL,
+                    models_dir=Path(settings.get("modelsDir") or dictation.default_models_dir()),
+                    port=stt_port, language=settings.get("language") or "", origins=sorted(state.origins),
+                    folders=[(n, e["path"]) for n, e in zip(names, entries) if e["enabled"]], key=key,
+                ))
+                print(f"Dictation -> http://127.0.0.1:{stt_port} (--show-secret prints its key)")
+                if stt.state == "failed":
+                    print(f"Dictation: {stt.problem}.")
+
+        def tell_newer() -> None:
+            # In the background: a slow network must not hold up the start.
+            found = updates.daily(config.path.parent / "update.json")
+            if found:
+                print(f"A new version, {found}, is out. Update with: {updates.UPGRADE}")
+
+        threading.Thread(target=tell_newer, daemon=True).start()
     print("Press Ctrl+C to stop.")
     try:
         server.serve_forever()
@@ -1036,6 +1201,8 @@ def main(argv: list[str] | None = None) -> int:
         pass
     finally:
         server.server_close()
+        if stt is not None:
+            stt.stop()
     return 0
 
 
