@@ -1,0 +1,146 @@
+// Icons: res/make_icons.py composes them from Clew's brand files (packages/kit/brand).
+// Texts are set at run time from src/win/strings.cpp (English or Japanese); the ones here are
+// placeholders for the resource editor only.
+#include <windows.h>
+#include <commctrl.h>
+#include "resource.h"
+#include "version.h"
+
+CREATEPROCESS_MANIFEST_RESOURCE_ID RT_MANIFEST "app.manifest"
+
+IDI_APP       ICON "icons/app.ico"
+IDI_TRAY_ON   ICON "icons/tray-on.ico"
+IDI_TRAY_OFF  ICON "icons/tray-off.ico"
+IDI_TRAY_BUSY ICON "icons/tray-busy.ico"
+IDI_TRAY_ON_DARK   ICON "icons/tray-on-dark.ico"
+IDI_TRAY_OFF_DARK  ICON "icons/tray-off-dark.ico"
+IDI_TRAY_BUSY_DARK ICON "icons/tray-busy-dark.ico"
+
+IDD_SETTINGS DIALOGEX 0, 0, 340, 422
+STYLE DS_SHELLFONT | DS_MODALFRAME | DS_CENTER | WS_POPUP | WS_CAPTION | WS_SYSMENU | WS_MINIMIZEBOX
+EXSTYLE WS_EX_APPWINDOW
+CAPTION "Clew audio server"
+FONT 9, "Segoe UI", 400, 0, 1
+BEGIN
+    // Page "Audio files" (shown and hidden by IDC_TABS, tray_win.cpp)
+    LTEXT           "status", IDC_STATUS, 10, 24, 262, 18
+    PUSHBUTTON      "Stop", IDC_STARTSTOP, 278, 22, 52, 14
+
+    // The folders, each with a tick box: ticked ones are served (docs/22 section 11).
+    GROUPBOX        "Folders", IDC_G_FOLDER, 7, 43, 326, 60
+    CONTROL         "", IDC_FOLDER, "SysListView32", LVS_REPORT | LVS_SINGLESEL | LVS_SHOWSELALWAYS | LVS_NOSORTHEADER | WS_BORDER | WS_TABSTOP, 14, 54, 250, 44
+    PUSHBUTTON      "Add", IDC_BROWSE, 268, 54, 58, 14
+    PUSHBUTTON      "Remove", IDC_REMOVEFOLDER, 268, 70, 58, 14
+    PUSHBUTTON      "Open", IDC_OPENFOLDER, 268, 86, 58, 14
+
+    GROUPBOX        "Connection", IDC_G_CONN, 7, 106, 326, 74
+    LTEXT           "Port", IDC_L_PORT, 14, 119, 40, 10
+    EDITTEXT        IDC_PORT, 58, 117, 42, 14, ES_NUMBER
+    LTEXT           "Hours", IDC_L_HOURS, 120, 119, 150, 10
+    EDITTEXT        IDC_HOURS, 284, 117, 42, 14, ES_NUMBER
+    LTEXT           "Origins", IDC_L_ORIGINS, 14, 134, 312, 18
+    EDITTEXT        IDC_ORIGINS, 14, 153, 312, 22, ES_MULTILINE | ES_AUTOVSCROLL | ES_WANTRETURN | WS_VSCROLL
+
+    GROUPBOX        "Secret", IDC_G_SECRET, 7, 183, 326, 44
+    EDITTEXT        IDC_SECRET, 14, 194, 150, 14, ES_AUTOHSCROLL | ES_READONLY | ES_PASSWORD
+    PUSHBUTTON      "Show", IDC_SHOW, 168, 194, 46, 14
+    PUSHBUTTON      "Copy", IDC_COPY, 217, 194, 46, 14
+    PUSHBUTTON      "New", IDC_NEWSECRET, 266, 194, 60, 14
+    LTEXT           "hint", IDC_L_SECRET, 14, 211, 312, 14
+
+    GROUPBOX        "Conversion", IDC_G_CONVERT, 7, 230, 326, 92
+    AUTOCHECKBOX    "Convert", IDC_CONVERT, 14, 241, 312, 18, BS_MULTILINE | BS_TOP
+    AUTOCHECKBOX    "Prepare", IDC_PREPARE, 14, 260, 312, 10
+    LTEXT           "ffmpeg", IDC_L_FFMPEG, 14, 276, 66, 10
+    EDITTEXT        IDC_FFMPEG, 82, 274, 140, 14, ES_AUTOHSCROLL
+    PUSHBUTTON      "Browse", IDC_FFBROWSE, 226, 274, 52, 14
+    PUSHBUTTON      "Find", IDC_FFFIND, 281, 274, 45, 14
+    LTEXT           "hint", IDC_L_FFHINT, 82, 290, 244, 10
+    LTEXT           "Cache", IDC_L_CACHE, 14, 305, 66, 10
+    EDITTEXT        IDC_CACHEMB, 82, 303, 46, 14, ES_NUMBER
+    LTEXT           "used", IDC_CACHEUSED, 134, 305, 120, 10
+    PUSHBUTTON      "Clear", IDC_CLEARCACHE, 258, 303, 68, 14
+
+    // Page "Dictation" (docs/28 section 3.4)
+    LTEXT           "status", IDC_STT_STATUS, 10, 24, 262, 18, NOT WS_VISIBLE
+    PUSHBUTTON      "Start", IDC_STT_STARTSTOP, 278, 22, 52, 14, NOT WS_VISIBLE
+
+    // Every model, one per row; what this computer cannot run is drawn grey (tray_win.cpp).
+    GROUPBOX        "Model", IDC_G_STT_MODEL, 7, 45, 326, 104, NOT WS_VISIBLE
+    LISTBOX         IDC_STT_MODELS, 14, 57, 250, 68, LBS_OWNERDRAWFIXED | LBS_HASSTRINGS | LBS_NOTIFY | LBS_NOINTEGRALHEIGHT | WS_VSCROLL | WS_BORDER | WS_TABSTOP | NOT WS_VISIBLE
+    PUSHBUTTON      "Download", IDC_STT_DOWNLOAD, 268, 57, 58, 14, NOT WS_VISIBLE
+    LTEXT           "note", IDC_STT_MODEL_NOTE, 14, 128, 312, 18, NOT WS_VISIBLE
+
+    GROUPBOX        "Models folder", IDC_G_STT_FOLDER, 7, 152, 326, 44, NOT WS_VISIBLE
+    EDITTEXT        IDC_STT_FOLDER, 14, 163, 208, 14, ES_AUTOHSCROLL | ES_READONLY | NOT WS_VISIBLE
+    PUSHBUTTON      "Change", IDC_STT_CHANGE, 226, 163, 52, 14, NOT WS_VISIBLE
+    PUSHBUTTON      "Open", IDC_STT_OPENFOLDER, 281, 163, 45, 14, NOT WS_VISIBLE
+    LTEXT           "free", IDC_STT_FREE, 14, 180, 312, 10, NOT WS_VISIBLE
+
+    GROUPBOX        "Language and port", IDC_G_STT_CONN, 7, 199, 326, 30, NOT WS_VISIBLE
+    LTEXT           "Language", IDC_L_STT_LANG, 14, 212, 42, 10, NOT WS_VISIBLE
+    COMBOBOX        IDC_STT_LANG, 58, 210, 160, 80, CBS_DROPDOWNLIST | WS_VSCROLL | WS_TABSTOP | NOT WS_VISIBLE
+    LTEXT           "Port", IDC_L_STT_PORT, 230, 212, 50, 10, NOT WS_VISIBLE
+    EDITTEXT        IDC_STT_PORT, 284, 210, 42, 14, ES_NUMBER | NOT WS_VISIBLE
+
+    GROUPBOX        "Key", IDC_G_STT_KEY, 7, 232, 326, 48, NOT WS_VISIBLE
+    EDITTEXT        IDC_STT_KEY, 14, 243, 150, 14, ES_AUTOHSCROLL | ES_READONLY | ES_PASSWORD | NOT WS_VISIBLE
+    PUSHBUTTON      "Show", IDC_STT_SHOWKEY, 168, 243, 46, 14, NOT WS_VISIBLE
+    PUSHBUTTON      "Copy", IDC_STT_COPYKEY, 217, 243, 46, 14, NOT WS_VISIBLE
+    PUSHBUTTON      "New", IDC_STT_NEWKEY, 266, 243, 60, 14, NOT WS_VISIBLE
+    LTEXT           "hint", IDC_L_STT_KEY, 14, 260, 312, 18, NOT WS_VISIBLE
+
+    AUTOCHECKBOX    "Start with the server", IDC_STT_AUTOSTART, 10, 285, 320, 18, BS_MULTILINE | BS_TOP | NOT WS_VISIBLE
+    LTEXT           "local", IDC_L_STT_LOCAL, 10, 305, 320, 10, NOT WS_VISIBLE
+
+    // Page "Updates" (docs/32)
+    LTEXT           "version", IDC_UPD_VERSION, 10, 24, 320, 10, NOT WS_VISIBLE
+    GROUPBOX        "New versions", IDC_G_UPD, 7, 38, 326, 104, NOT WS_VISIBLE
+    AUTOCHECKBOX    "Check daily", IDC_UPD_AUTO, 14, 50, 312, 10, NOT WS_VISIBLE
+    LTEXT           "status", IDC_UPD_STATUS, 14, 66, 248, 28, NOT WS_VISIBLE
+    PUSHBUTTON      "Check now", IDC_UPD_CHECK, 268, 64, 58, 14, NOT WS_VISIBLE
+    PUSHBUTTON      "Install", IDC_UPD_INSTALL, 14, 96, 120, 14, NOT WS_VISIBLE
+    PUSHBUTTON      "What's new", IDC_UPD_NOTES, 138, 96, 80, 14, NOT WS_VISIBLE
+    LTEXT           "kept", IDC_L_UPD_KEPT, 14, 114, 312, 26, NOT WS_VISIBLE
+    GROUPBOX        "How", IDC_G_UPD_HOW, 7, 146, 326, 90, NOT WS_VISIBLE
+    LTEXT           "how", IDC_L_UPD_HOW, 14, 158, 312, 74, NOT WS_VISIBLE
+
+    // All pages
+    AUTOCHECKBOX    "Autostart", IDC_AUTOSTART, 10, 351, 200, 10
+
+    LTEXT           "Activity", IDC_L_ACTIVITY, 10, 364, 320, 10
+    LISTBOX         IDC_ACTIVITY, 10, 374, 320, 24, LBS_NOINTEGRALHEIGHT | LBS_NOSEL | WS_VSCROLL | WS_BORDER
+
+    LTEXT           "", IDC_MESSAGE, 10, 405, 200, 10
+    DEFPUSHBUTTON   "Save", IDOK, 220, 403, 54, 14
+    PUSHBUTTON      "Close", IDCANCEL, 278, 403, 54, 14
+
+    // The tabs: a strip only, so each page draws on the window's own background. Last, so it is
+    // at the bottom of the order and never paints over a page.
+    CONTROL         "", IDC_TABS, "SysTabControl32", WS_TABSTOP | WS_CLIPSIBLINGS, 3, 4, 334, 15
+END
+
+VS_VERSION_INFO VERSIONINFO
+ FILEVERSION CLEW_VERSION_MAJOR,CLEW_VERSION_MINOR,CLEW_VERSION_PATCH,0
+ PRODUCTVERSION CLEW_VERSION_MAJOR,CLEW_VERSION_MINOR,CLEW_VERSION_PATCH,0
+ FILEOS VOS_NT_WINDOWS32
+ FILETYPE VFT_APP
+BEGIN
+    BLOCK "StringFileInfo"
+    BEGIN
+        BLOCK "040904b0"
+        BEGIN
+            VALUE "CompanyName", "YaqaLab"
+            VALUE "FileDescription", "Clew audio server"
+            VALUE "FileVersion", CLEW_VERSION
+            VALUE "InternalName", "clew-audio-server"
+            VALUE "OriginalFilename", "clew-audio-server.exe"
+            VALUE "ProductName", "Clew"
+            VALUE "ProductVersion", CLEW_VERSION
+        END
+    END
+    BLOCK "VarFileInfo"
+    BEGIN
+        VALUE "Translation", 0x409, 1200
+    END
+END

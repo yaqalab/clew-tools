@@ -1,0 +1,33 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "alefa-stt"
+version = "0.1.0"
+description = "Streaming speech-to-text for stt.alefa.net: Whisper on a Hailo-8, Deepgram-style WebSocket and OpenAI-style file API."
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi>=0.110",
+    "uvicorn[standard]>=0.29",
+    "python-multipart>=0.0.9",
+    "numpy>=1.24",
+]
+
+[project.optional-dependencies]
+# webrtcvad is optional: ALEFA_STT_VAD=webrtc uses it, the default energy detector needs nothing.
+webrtc = ["webrtcvad-wheels>=2.0.11"]
+# The Windows build (clew docs/28): faster-whisper on the CPU, PyAV to decode without ffmpeg,
+# sherpa-onnx to tell voices apart in live transcription (docs/29).
+local = ["faster-whisper>=1.2.1", "av>=11", "sherpa-onnx>=1.12"]
+test = ["pytest>=8", "httpx>=0.27", "websockets>=12"]
+
+[project.scripts]
+alefa-stt = "alefa_stt.__main__:main"
+clew-stt-server = "alefa_stt.__main__:main"
+
+[tool.setuptools.packages.find]
+include = ["alefa_stt*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
