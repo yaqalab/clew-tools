@@ -2,6 +2,29 @@
 
 Each section is the text of that version's release on GitHub.
 
+## 1.3.0 — 2026-10-20
+
+**The analysis engine** (`analysis-server/`, `clew-analysis-server`): runs regressions, exact and
+rank tests and Cronbach's alpha for Clew in your own statistics program, as a translator: Clew
+sends one neutral command with the data and gets one result back, with the script that ran.
+Standard library only. Four programs:
+
+- **R**: base R (and `MASS`, which comes with it).
+- **Python** from a Conda environment with pandas, scipy and statsmodels: the same tables and the
+  same numbers as R.
+- **PSPP**: its own tables; no ordinal regression (PSPP has none).
+- **SPSS**, through its Python plug-in: not yet tried with a real SPSS.
+
+Your own R or Python scripts can be added with `--scripts`.
+
+**Windows: the Analysis tab.** The installer has a new optional part, **Analysis** (about 18 MB;
+no statistics program is included). The settings window's new **Analysis** tab chooses the
+program and shows whether it was found (or lets you choose it), starts and stops the engine,
+keeps its key (encrypted for your Windows account, with Show, Copy and New), and takes a folder
+of your own scripts, a port and a time limit. The tray menu gains "Analysis: start/stop" and
+"Copy the analysis key". The engine runs as a child of the tray program: it ends with it, and
+the statistics program runs inside the same memory limit.
+
 ## 1.2.0 — 2026-10-19
 
 **macOS and Linux.** The Python audio server becomes a package you install with

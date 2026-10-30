@@ -8,6 +8,7 @@ uploaded: Clew in the browser talks to them at `127.0.0.1`, which means "this co
 |---|---|---|
 | **Clew audio server** | Plays and lists the interview recordings in folders you choose, so you don't have to pick the file again each visit | Windows (tray app); macOS and Linux (Python script) |
 | **Dictation** (optional) | Speech to text with Whisper, on your computer: dictation while writing, transcription of recordings | Windows, installed together with the audio server |
+| **Analysis** (optional) | Runs Clew's survey analyses (regressions, exact and rank tests, reliability) in your own statistics program: [R](https://cran.r-project.org), a Conda Python, [PSPP](https://www.gnu.org/software/pspp) or SPSS | Windows, installed together with the audio server; macOS and Linux (Python) |
 
 **[Download the latest version](https://github.com/yaqalab/clew-tools/releases/latest)**
 (`clew-audio-server-setup-<version>.exe`).
@@ -16,8 +17,9 @@ uploaded: Clew in the browser talks to them at `127.0.0.1`, which means "this co
 
 1. Download `clew-audio-server-setup-<version>.exe` from the
    [latest release](https://github.com/yaqalab/clew-tools/releases/latest).
-2. Run it. You don't need administrator rights. Choose **Audio server and dictation**, or
-   **Audio server only** if you won't use dictation (the dictation part is about 200 MB).
+2. Run it. You don't need administrator rights. Choose **Audio server, dictation and analysis**,
+   or **Audio server only** if you won't use them (the dictation part is about 200 MB, the
+   analysis part about 18 MB). **Choose** lets you tick each one.
 3. Windows may show **"Windows protected your PC"** the first time you run it. The installer is
    signed by YaqaLab, but the certificate is one YaqaLab made itself, not one bought from a
    certificate authority, so Windows doesn't recognise the name yet. Press **More info**, check
@@ -30,6 +32,13 @@ uploaded: Clew in the browser talks to them at `127.0.0.1`, which means "this co
 
 For dictation, open the **Dictation** tab, download a model (`small` suits most computers), press
 **Copy** next to the key, and paste it in Clew under **Settings › Dictation › This computer**.
+
+For analysis, you need one statistics program: [R](https://cran.r-project.org) (4.0 or later),
+a Conda environment with pandas, scipy and statsmodels, [PSPP](https://www.gnu.org/software/pspp),
+or SPSS Statistics with its Python plug-in. Open the **Analysis** tab, choose the program, and
+check that it was found (or press **Change** to choose it yourself). Press **Start**, then **Copy** next to the key, and paste it in Clew under
+**Analysis › Start › On this computer › Connect**. Optionally, choose a folder of your own R
+scripts: Clew lists them and can run them by name.
 
 The audio server then starts with Windows (you can untick that), and Clew finds it by itself.
 Its icon sits by the clock; one click opens the settings.
@@ -63,6 +72,11 @@ pipx install --force "clew-tools[dictation] @ git+https://github.com/yaqalab/cle
 Then download a model in the window's **Dictation** tab (`small` suits most computers), copy its
 key into Clew under **Settings › Dictation › This computer**, and press **Start**.
 
+**Analysis** needs nothing more than [R](https://cran.r-project.org): run
+`clew-analysis-server`, which shows its key the first time (`--show-key` shows it again), and
+paste it in Clew under **Analysis › Start › On this computer › Connect**. Options:
+[analysis-server/README.md](analysis-server/README.md).
+
 **Updating:** `pipx upgrade clew-tools`. The window's **Updates** tab tells you when there is a new
 version; it never installs anything by itself.
 
@@ -82,8 +96,12 @@ for recordings and speech recognition it asks these programs, on your computer:
   (`http://127.0.0.1:47822`) and gets the text back. Speech recognition runs on your processor
   (or your NVIDIA graphics card, if you have one). Nothing is sent to a speech service on the
   internet.
+- **Analysis:** Clew sends the survey columns you chose and the forms its filters keep to the
+  analysis engine (`http://127.0.0.1:47823`), which hands them to your own R and sends the result
+  tables back. Nothing goes to the internet, and nothing is written to disk on the way. Clew can
+  only name an analysis the engine offers; it can never send code to run.
 
-Each request from Clew carries the secret (audio) or the key (dictation) that you pasted. Your
+Each request from Clew carries the secret (audio) or the key (dictation, analysis) that you pasted. Your
 browser may ask once whether clew.alefa.net may connect to apps on this device; allow it for
 Clew.
 
@@ -91,13 +109,14 @@ Clew.
 
 These programs are built to do one narrow job and refuse everything else.
 
-**Only this computer.** Both servers listen on `127.0.0.1` only, so other computers on your
+**Only this computer.** All three servers listen on `127.0.0.1` only, so other computers on your
 network or the internet can't reach them. A request that names another host is refused, which
 stops a web page from reaching them through a disguised address.
 
 **Only Clew, and only with your secret.** Web pages other than Clew (clew.alefa.net, or a Clew
 running on this computer) are refused by the browser's own rules. Listing your recordings needs
-the secret; dictation needs its key. Both are made from Windows' secure random generator and
+the secret; dictation and analysis each need their own key. All are made from Windows' secure
+random generator and
 stored **encrypted for your Windows account** (DPAPI), so another account, or a copy of the
 settings file on another computer, can't read them. Wrong guesses slow the server down. When
 you copy the secret, it's kept out of Windows' clipboard history and cloud clipboard. **New
@@ -194,10 +213,11 @@ problem, please write to alefa-support@googlegroups.com instead of opening a pub
 
 | Folder | |
 |---|---|
-| [audio-server/native/](audio-server/native/) | The Windows program: C++17, Windows APIs only, no third-party code. Tray, settings window, installer (Inno Setup) |
+| [native/](native/) | The Windows program: C++17, Windows APIs only, no third-party code. Tray, settings window, installer (Inno Setup) |
 | [audio-server/](audio-server/) | The Python audio server (standard library only): macOS, Linux, or a backup on Windows. `clew_audio_server.py` runs alone; the `clew_audio/` package beside it adds the window (Tkinter), the keystore, start at login, dictation and the update check |
 | [pyproject.toml](pyproject.toml) | The `clew-tools` package pipx installs (the audio server, and with `[dictation]` the dictation server and faster-whisper) |
 | [stt-server/](stt-server/) | The dictation server: Python, faster-whisper, packed with PyInstaller for Windows |
+| [analysis-server/](analysis-server/) | The analysis engine: Python standard library and R adapters, packed with PyInstaller for Windows |
 
 Build and test instructions are in each folder's README. The version is in [VERSION](VERSION).
 Code comments and READMEs refer to design notes as `docs/NN-…`: those notes belong to Clew's own
@@ -210,5 +230,7 @@ The code in this repository is under the [MIT licence](LICENSE). The Windows ins
 dictation part also contains third-party software under its own licences, among them FFmpeg
 libraries and the x264 and x265 encoders (GPL-2.0-or-later) that come with PyAV. They are listed
 in `THIRD-PARTY-NOTICES.txt`, installed beside the dictation server and attached to each
-release, together with where to get their source code. The audio server alone contains no
-third-party code.
+release, together with where to get their source code. The analysis part packs Python's own
+library (PSF licence) and PyInstaller's bootloader (GPL with an exception that allows this), listed
+in its own `THIRD-PARTY-NOTICES.txt`; R is not included: it is your own installation. The audio
+server alone contains no third-party code.

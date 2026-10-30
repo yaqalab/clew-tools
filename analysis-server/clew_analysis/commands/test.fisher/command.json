@@ -1,0 +1,14 @@
+{
+  "id": "test.fisher",
+  "version": 1,
+  "group": "tests",
+  "title": {
+    "en": "Fisher's exact test",
+    "ja": "フィッシャーの正確確率検定",
+    "fr": "Test exact de Fisher"
+  },
+  "needs": {
+    "dependent": { "min": 1, "max": 1, "levels": ["nominal", "ordinal"] },
+    "independent": { "min": 1, "max": 1, "levels": ["nominal", "ordinal"] }
+  }
+}

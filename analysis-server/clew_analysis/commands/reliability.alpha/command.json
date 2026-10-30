@@ -1,0 +1,14 @@
+{
+  "id": "reliability.alpha",
+  "version": 1,
+  "group": "reliability",
+  "title": {
+    "en": "Reliability (Cronbach's alpha)",
+    "ja": "信頼性（クロンバックのα）",
+    "fr": "Fiabilité (alpha de Cronbach)"
+  },
+  "needs": {
+    "dependent": { "min": 2, "max": 100, "levels": ["scale", "ordinal", "nominal"] },
+    "independent": { "min": 0, "max": 0, "levels": [] }
+  }
+}

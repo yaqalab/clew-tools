@@ -1,0 +1,14 @@
+{
+  "id": "regression.logistic",
+  "version": 1,
+  "group": "models",
+  "title": {
+    "en": "Logistic regression (two values)",
+    "ja": "ロジスティック回帰（二値）",
+    "fr": "Régression logistique (deux valeurs)"
+  },
+  "needs": {
+    "dependent": { "min": 1, "max": 1, "levels": ["nominal", "ordinal"] },
+    "independent": { "min": 1, "max": 20, "levels": ["scale", "nominal", "ordinal"] }
+  }
+}

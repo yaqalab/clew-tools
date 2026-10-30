@@ -37,9 +37,20 @@ jobs:
         if: runner.os == 'macOS'
         working-directory: audio-server
         run: python -m unittest discover -s . -p "test_*.py" -v
+      - name: R and PSPP for the analysis engine (Linux)
+        if: runner.os == 'Linux'
+        run: sudo apt-get install -y -qq r-base-core pspp
+      - name: A Python with the analysis engine's libraries
+        run: python -m pip install pandas numpy scipy statsmodels
+      - name: Analysis engine tests (R and PSPP on Linux, Python everywhere; SPSS is not available)
+        working-directory: analysis-server
+        env:
+          CLEW_TEST_PYTHON: python
+        run: python -m unittest discover -s tests -v
       - name: Install as users do
         run: |
           python -m venv /tmp/user
           /tmp/user/bin/pip install .
           /tmp/user/bin/clew-audio-server --version
           /tmp/user/bin/clew-audio-server --check-update
+          /tmp/user/bin/clew-analysis-server --check

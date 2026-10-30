@@ -1,0 +1,14 @@
+{
+  "id": "test.ranks",
+  "version": 1,
+  "group": "tests",
+  "title": {
+    "en": "Groups compared by ranks (Mann–Whitney, Kruskal–Wallis)",
+    "ja": "順位によるグループ比較（マン・ホイットニー、クラスカル・ウォリス）",
+    "fr": "Groupes comparés par rangs (Mann–Whitney, Kruskal–Wallis)"
+  },
+  "needs": {
+    "dependent": { "min": 1, "max": 1, "levels": ["scale", "ordinal", "nominal"] },
+    "independent": { "min": 1, "max": 1, "levels": ["nominal", "ordinal"] }
+  }
+}

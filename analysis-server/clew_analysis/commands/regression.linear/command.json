@@ -1,0 +1,14 @@
+{
+  "id": "regression.linear",
+  "version": 1,
+  "group": "models",
+  "title": {
+    "en": "Linear regression",
+    "ja": "線形回帰",
+    "fr": "Régression linéaire"
+  },
+  "needs": {
+    "dependent": { "min": 1, "max": 1, "levels": ["scale"] },
+    "independent": { "min": 1, "max": 20, "levels": ["scale", "nominal", "ordinal"] }
+  }
+}

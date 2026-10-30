@@ -4,7 +4,7 @@
 #   pipx install "clew-tools @ git+https://github.com/yaqalab/clew-tools"
 #   pipx install "clew-tools[dictation] @ git+https://github.com/yaqalab/clew-tools"
 #
-# The Windows installer does not use this file (audio-server/native, stt-server/build_exe.ps1).
+# The Windows installer does not use this file (native/, stt-server/build_exe.ps1, analysis-server/build_exe.ps1).
 [build-system]
 requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
@@ -17,7 +17,7 @@ readme = "README.md"
 license = { text = "MIT" }
 authors = [{ name = "F. R. Andriariniaina", email = "alefa-support@googlegroups.com" }]
 requires-python = ">=3.10"
-# The audio server needs nothing beyond Python's standard library.
+# The audio server and the analysis engine need nothing beyond Python's standard library.
 dependencies = []
 
 [project.optional-dependencies]
@@ -39,14 +39,20 @@ Clew = "https://clew.alefa.net"
 [project.scripts]
 clew-audio-server = "clew_audio_server:main"
 clew-stt-server = "alefa_stt.__main__:main"
+clew-analysis-server = "clew_analysis.__main__:main"
 
 [tool.setuptools]
 py-modules = ["clew_audio_server"]
-packages = ["clew_audio", "alefa_stt"]
+packages = ["clew_audio", "alefa_stt", "clew_analysis"]
 
 [tool.setuptools.package-dir]
 "" = "audio-server"
 alefa_stt = "stt-server/alefa_stt"
+clew_analysis = "analysis-server/clew_analysis"
+
+# The analysis engine's R files and command descriptions travel with the package (docs/36).
+[tool.setuptools.package-data]
+clew_analysis = ["commands/*.R", "commands/*/*.R", "commands/*/*.json"]
 
 [tool.setuptools.dynamic]
 version = { file = "VERSION" }
