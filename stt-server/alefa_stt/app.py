@@ -22,7 +22,8 @@ from .segmenter import Segment, Segmenter, make_vad
 from .session import (CLOSE_POLICY, CLOSE_TRY_LATER, ListenParams, ListenSession, clean_prompt,
                       offered_languages, pick_language)
 from .speakers import FakeSpeakerModel, SpeakerError, SpeakerModel
-from .transcribe import TranscribeParams, TranscribeSession
+from .transcribe import (PathError, TranscribeParams, TranscribeSession, check_link, decode_span,
+                         resolve_served)
 
 log = logging.getLogger("alefa_stt")
 
@@ -187,6 +188,57 @@ def create_app(settings: Settings, engine=None) -> FastAPI:
         finally:
             state["sessions"] -= 1
 
+    @app.post("/v1/words")
+    async def words(request: Request):
+        """Each word of one stretch of a recording, with its time in the recording: what Clew
+        places a training cut by (clew docs/30 §8, P63). JSON: `source` "folder" (with `path`, in
+        the audio server's folder) or "url" (the audio server's link), `start` and `end` in
+        seconds (at most `MAX_WORDS_SPAN` apart), and `language`. No prompt, ever: given the
+        typed text, Whisper repeats it instead of listening."""
+        await require_key(request)
+        try:
+            body = await request.json()
+        except Exception as exc:
+            raise ApiError(400, "send a JSON body") from exc
+        if not isinstance(body, dict):
+            raise ApiError(400, "send a JSON object")
+        try:
+            start = max(0.0, float(body.get("start", 0)))
+            end = float(body.get("end", 0))
+        except (TypeError, ValueError) as exc:
+            raise ApiError(400, "start and end are numbers") from exc
+        if not end > start:
+            raise ApiError(400, "end comes after start")
+        if end - start > MAX_WORDS_SPAN:
+            raise ApiError(413, f"a stretch is at most {MAX_WORDS_SPAN} seconds")
+        engine: Serial = state["engine"]
+        try:
+            language = pick_language(str(body.get("language") or ""), settings, engine.languages)
+        except FormatError as exc:
+            raise ApiError(400, str(exc)) from exc
+        try:
+            if body.get("source") == "folder":
+                source = str(resolve_served(settings.audio_root or "", settings.audio_folders,
+                                            str(body.get("path") or "")))
+            elif body.get("source") == "url":
+                source = check_link(str(body.get("url") or ""))
+            else:
+                raise ApiError(400, "source is folder or url")
+            audio = await asyncio.to_thread(decode_span, source, start, end)
+        except PathError as exc:
+            raise ApiError(403, str(exc)) from exc
+        except FormatError as exc:
+            raise ApiError(400, f"could not read the audio: {exc}") from exc
+        heard = await engine.words(audio, language=language)
+        if heard is None:
+            raise ApiError(501, "this server's engine does not time words")
+        return {
+            "language": language,
+            "start": round(start, 3),
+            "words": [{"word": w, "start": round(start + a, 3), "end": round(start + b, 3)}
+                      for a, b, w in heard],
+        }
+
     @app.post("/v1/audio/transcriptions")
     async def transcriptions(request: Request):
         await require_key(request)
@@ -241,6 +293,9 @@ def create_app(settings: Settings, engine=None) -> FastAPI:
 
 
 LANGUAGE_NAMES = {"en": "english", "ja": "japanese", "fr": "french", "mg": "malagasy"}
+
+# One turn of an interview, with room: a turn longer than this is cut in parts by Clew first.
+MAX_WORDS_SPAN = 600
 
 
 def origin_allowed(origin: str, settings: Settings) -> bool:

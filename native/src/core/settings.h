@@ -8,6 +8,7 @@
 #include <string>
 #include <vector>
 
+#include "json.h"
 #include "platform.h"
 
 namespace clew {
@@ -69,6 +70,12 @@ struct Settings {
     static Settings load(const std::filesystem::path& file);
     // Atomic: written beside, then renamed over.
     bool save(const std::filesystem::path& file) const;
+
+    // The settings file's shape (camelCase keys), also what the control mode (control.h) sends and
+    // takes. `with_secrets` false leaves the sealed secret and keys out. Reading is as forgiving as
+    // load(): a missing or bad value keeps its default.
+    json::Value to_json(bool with_secrets) const;
+    static Settings from_json(const json::Value& d);
 };
 
 std::filesystem::path default_settings_file();

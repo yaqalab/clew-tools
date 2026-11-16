@@ -59,14 +59,39 @@ int converter_child(const std::wstring& in) {
 // A window program has no console of its own: use the one it was started from, or the pipes it
 // was given (npm run dev, the tests).
 struct ConsoleOut {
-    HANDLE out = nullptr, err = nullptr;
+    HANDLE out = nullptr, err = nullptr, in = nullptr;
     HANDLE stop = CreateEventW(nullptr, TRUE, FALSE, nullptr);
+    std::string pending;  // what was read past the last whole line
 
     ConsoleOut() {
         out = GetStdHandle(STD_OUTPUT_HANDLE);
         err = GetStdHandle(STD_ERROR_HANDLE);
+        in = GetStdHandle(STD_INPUT_HANDLE);
         if ((!out || out == INVALID_HANDLE_VALUE) && AttachConsole(ATTACH_PARENT_PROCESS)) {
             out = err = CreateFileW(L"CONOUT$", GENERIC_WRITE, FILE_SHARE_WRITE, nullptr, OPEN_EXISTING, 0, nullptr);
+        }
+    }
+
+    // --control: the pipe the parent writes requests into, one line at a time (UTF-8).
+    bool read_line(std::string* line) {
+        for (;;) {
+            auto nl = pending.find('\n');
+            if (nl != std::string::npos) {
+                *line = pending.substr(0, nl);
+                if (!line->empty() && line->back() == '\r') line->pop_back();
+                pending.erase(0, nl + 1);
+                return true;
+            }
+            char buf[4096];
+            DWORD n = 0;
+            if (!in || in == INVALID_HANDLE_VALUE || !ReadFile(in, buf, sizeof buf, &n, nullptr) || n == 0) {
+                if (pending.empty()) return false;
+                *line = pending;
+                pending.clear();
+                return true;
+            }
+            pending.append(buf, n);
+            if (pending.size() > (1u << 20)) return false;  // no request is that long
         }
     }
 
@@ -99,6 +124,7 @@ int headless(const std::vector<std::string>& args) {
     c.out = [&](const std::string& s) { ConsoleOut::write(console.out, s); };
     c.err = [&](const std::string& s) { ConsoleOut::write(console.err, s); };
     c.wait_for_stop = [&] { WaitForSingleObject(console.stop, INFINITE); };
+    c.read_line = [&](std::string* line) { return console.read_line(line); };
     return clew::run_headless(args, c);
 }
 
@@ -119,7 +145,8 @@ int WINAPI wWinMain(HINSTANCE instance, HINSTANCE, PWSTR, int) {
     bool console_mode = false;
     for (const auto& a : wargs) {
         args.push_back(clew::win::narrow(a));
-        if (a == L"--headless" || a == L"--help" || a == L"-h" || a == L"--version") console_mode = true;
+        if (a == L"--headless" || a == L"--control" || a == L"--help" || a == L"-h" || a == L"--version")
+            console_mode = true;
     }
     if (console_mode) return headless(args);
     if (wargs.size() == 1 && wargs[0] == L"--quit") return clew::win::quit_running();

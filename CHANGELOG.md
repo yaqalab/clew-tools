@@ -2,6 +2,20 @@
 
 Each section is the text of that version's release on GitHub.
 
+## 1.4.0 — 2026-11-16
+
+**Probably the last release of Clew tools on their own.** The same audio server, analysis engine
+and dictation are now part of **Clew Desktop**, one installable app with Clew inside; that is
+where they will be updated from now on.
+
+**Cuts for training, placed by the words heard.** The dictation server has a new call,
+`POST /v1/words`: the words of one stretch of a recording in the audio server's folder, each with
+its time. Clew's Training view uses it: **Next turn to look at** on a turn longer than the limit
+now puts the caret on the word after the best pause and plays from just before it, so you only
+listen and confirm with **Cut here** (or `/x`). Measured on public English interviews, the cut
+lands within about 0.15 s of the real pause in most cases, and within a second 95% of the time.
+Without this version, Clew keeps suggesting the cut from the recording's loudness, as before.
+
 ## 1.3.0 — 2026-10-20
 
 **The analysis engine** (`analysis-server/`, `clew-analysis-server`): runs regressions, exact and

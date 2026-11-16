@@ -161,6 +161,29 @@ class TranscribeParams:
         )
 
 
+def decode_span(source, start: float, end: float) -> np.ndarray:
+    """`source` from `start` to `end` seconds, 16 kHz mono float32: one turn's audio, for the
+    words a training cut is placed by (`/v1/words`)."""
+    stop = threading.Event()
+    chunks: list[np.ndarray] = []
+    state = {"at": None}
+
+    def put(chunk: np.ndarray, offset: float | None) -> None:
+        if state["at"] is None:
+            state["at"] = offset if offset is not None else start
+        left = round((end - state["at"]) * SAMPLE_RATE)
+        if left <= 0:
+            stop.set()
+            return
+        chunks.append(chunk[:left])
+        state["at"] += len(chunk) / SAMPLE_RATE
+        if len(chunk) >= left:
+            stop.set()
+
+    _decode_into(source, start, put, stop)
+    return np.concatenate(chunks) if chunks else np.zeros(0, dtype=np.float32)
+
+
 def _decode_into(source, start: float, put, stop: threading.Event, on_duration=None) -> float:
     """Decodes `source` (a path or a file-like) from `start` seconds into 16 kHz mono float32,
     one second at a time, through `put(chunk, offset)`. Returns the recording's duration, and

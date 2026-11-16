@@ -278,3 +278,27 @@ def test_several_folders_follow_the_audio_servers_rules(folder, tmp_path):
             resolve_served("", folders, bad)
     # Without names, the one root as before.
     assert resolve_served(str(folder), {}, "2026/interview.wav").name == "interview.wav"
+
+
+def test_words_of_a_stretch_come_with_times_in_the_recording(client):
+    """/v1/words (clew docs/30 §8): the words of one turn, timed in the recording, read from
+    the audio server's folder; the fake engine hears one word a second."""
+    headers = {"Authorization": f"Bearer {KEY}"}
+    r = client.post("/v1/words", headers=headers,
+                    json={"source": "folder", "path": "2026/interview.wav", "start": 2, "end": 6,
+                          "language": "en"})
+    assert r.status_code == 200, r.text
+    words = r.json()["words"]
+    assert [w["word"] for w in words] == ["w0", "w1", "w2", "w3"]
+    assert words[0]["start"] == 2.0 and words[-1]["end"] == 5.5
+
+
+def test_words_refuse_what_they_should(client):
+    headers = {"Authorization": f"Bearer {KEY}"}
+    path = {"source": "folder", "path": "2026/interview.wav"}
+    assert client.post("/v1/words", json={**path, "start": 0, "end": 2}).status_code == 401
+    assert client.post("/v1/words", headers=headers, json={**path, "start": 3, "end": 2}).status_code == 400
+    assert client.post("/v1/words", headers=headers, json={**path, "start": 0, "end": 900}).status_code == 413
+    outside = {"source": "folder", "path": "../outside.wav", "start": 0, "end": 2}
+    assert client.post("/v1/words", headers=headers, json=outside).status_code == 403
+    assert client.post("/v1/words", headers=headers, json={"source": "upload", "start": 0, "end": 2}).status_code == 400

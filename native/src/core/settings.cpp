@@ -32,7 +32,12 @@ Settings Settings::load(const std::filesystem::path& file) {
     if (starts_with(text, "\xEF\xBB\xBF")) text = text.substr(3);
     auto v = json::parse(text);
     if (!v || !v->is_object() || !(*v)["v"].is_number() || (*v)["v"].num() != 1) return s;
-    const auto& d = *v;
+    return from_json(*v);
+}
+
+Settings Settings::from_json(const json::Value& d) {
+    Settings s;
+    if (!d.is_object()) return s;
     if (d["folders"].is_array()) {
         for (const auto& f : d["folders"].items()) {
             if (!f.is_object() || !f["path"].is_string() || f["path"].str().empty()) continue;
@@ -84,7 +89,7 @@ Settings Settings::load(const std::filesystem::path& file) {
     return s;
 }
 
-bool Settings::save(const std::filesystem::path& file) const {
+json::Value Settings::to_json(bool with_secrets) const {
     json::Value d = json::Value::object();
     d.set("v", 1);
     json::Value list = json::Value::array();
@@ -107,7 +112,7 @@ bool Settings::save(const std::filesystem::path& file) const {
     d.set("cacheMb", cache_mb);
     d.set("ffmpeg", ffmpeg);
     d.set("systemCodecs", system_codecs);
-    if (secret) {
+    if (secret && with_secrets) {
         json::Value sv = json::Value::object();
         sv.set("kind", secret->kind);
         sv.set("data", secret->data);
@@ -118,7 +123,7 @@ bool Settings::save(const std::filesystem::path& file) const {
     d.set("sttModelsDir", stt_models_dir);
     d.set("sttLanguage", stt_language);
     d.set("sttPort", stt_port);
-    if (stt_secret) {
+    if (stt_secret && with_secrets) {
         json::Value sv = json::Value::object();
         sv.set("kind", stt_secret->kind);
         sv.set("data", stt_secret->data);
@@ -133,12 +138,17 @@ bool Settings::save(const std::filesystem::path& file) const {
     d.set("analysisSpss", analysis_spss);
     d.set("analysisScripts", analysis_scripts);
     d.set("analysisTimeout", analysis_timeout);
-    if (analysis_secret) {
+    if (analysis_secret && with_secrets) {
         json::Value sv = json::Value::object();
         sv.set("kind", analysis_secret->kind);
         sv.set("data", analysis_secret->data);
         d.set("analysisSecret", sv);
     }
+    return d;
+}
+
+bool Settings::save(const std::filesystem::path& file) const {
+    json::Value d = to_json(true);
     std::error_code ec;
     std::filesystem::create_directories(file.parent_path(), ec);
     auto tmp = file;

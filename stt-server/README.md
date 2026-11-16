@@ -41,6 +41,16 @@
 | `large-v3` | 3.09 GB | an NVIDIA GPU | `Systran/faster-whisper-large-v3` |
 | `small.en` | 486 MB | English only; no better than `small` here (`28` §2); not in the tray's list | `Systran/faster-whisper-small.en` |
 
+## Words with their times (clew docs/30 §8)
+
+`POST /v1/words` (JSON, the dictation key as `Authorization: Bearer`): the words of one stretch
+of a recording, each with its time in the recording, for a training cut placed between two words
+(clew-tools 1.4). Body: `source` `"folder"` (with `path`, in the audio server's folder, checked
+like `/v1/transcribe`'s) or `"url"` (the audio server's link), `start` and `end` in seconds (at
+most 600 apart), `language`. Answer: `{ language, start, words: [{ word, start, end }] }`. Whisper
+runs with word timestamps and **no prompt**: given the typed text, it repeats it instead of
+listening. An engine without word times answers 501.
+
 ## Live transcription (clew docs/29)
 
 `/v1/transcribe` (WebSocket): a recording's turns with their voices, worked through as fast as

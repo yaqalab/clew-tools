@@ -1,9 +1,11 @@
-// macOS and Linux entry point: headless only for now (no tray). NOT built or tested yet.
+// macOS and Linux entry point: headless and --control (no tray: Clew Desktop is the window there).
+// NOT built or tested yet.
 #include <signal.h>
 #include <sys/stat.h>
 #include <unistd.h>
 
 #include <cstdio>
+#include <iostream>
 #include <string>
 #include <vector>
 
@@ -36,5 +38,6 @@ int main(int argc, char** argv) {
     c.wait_for_stop = [] {
         while (!g_stop) pause();
     };
+    c.read_line = [](std::string* line) { return bool(std::getline(std::cin, *line)); };
     return clew::run_headless(args, c);
 }

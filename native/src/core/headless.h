@@ -12,6 +12,8 @@ struct Console {
     std::function<void(const std::string&)> out;   // a line for the user
     std::function<void(const std::string&)> err;   // a log line
     std::function<void()> wait_for_stop;           // returns on Ctrl+C or a stop signal
+    // One line of standard input, without its line ending; false at its end (--control only).
+    std::function<bool(std::string*)> read_line;
 };
 
 // `args` without the program's name. Returns the exit code.

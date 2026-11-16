@@ -1,15 +1,19 @@
 // Unit tests for the portable core. No framework: each CHECK prints what failed, and the exit code
 // is the number of failures. The HTTP behaviour is tested against the real program by test_native.py.
+#include <chrono>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <filesystem>
 #include <fstream>
+#include <mutex>
 #include <string>
+#include <thread>
 #include <vector>
 
 #include "analysis.h"
+#include "control.h"
 #include "dictation.h"
 #include "files.h"
 #include "folders.h"
@@ -17,6 +21,7 @@
 #include "mp3.h"
 #include "platform.h"
 #include "server.h"
+#include "service.h"
 #include "settings.h"
 #include "sha256.h"
 #include "text.h"
@@ -509,6 +514,107 @@ static void analysis_lines() {
     CHECK(st.programs.size() == 4 && Analysis::backends().size() == 4);
 }
 
+// --control (control.h): requests and replies, as Clew Desktop sends them, against a real Service.
+static void control_protocol(const fs::path& tmp) {
+    fs::path dir = tmp / "control";
+    fs::create_directories(dir / "audio");
+    Service svc(dir / "settings.json", dir / "cache", nullptr);
+    std::mutex m;
+    std::vector<json::Value> sent;
+    Control ctl(svc, [&](const std::string& line) {
+        auto v = json::parse(line);
+        std::lock_guard<std::mutex> g(m);
+        if (v) sent.push_back(*v);
+    });
+    svc.on_change([&ctl] { ctl.changed(); });  // as run_control wires it
+    // The reply to one request (events may arrive in between, from the status pump).
+    int next_id = 0;
+    auto ask = [&](std::string body) -> json::Value {
+        int id = ++next_id;
+        std::string line = "{\"id\":" + std::to_string(id) + ",\"cmd\":" + body + "}";
+        bool more = ctl.handle(line);
+        CHECK(more == (body.rfind("\"quit\"", 0) != 0));
+        std::lock_guard<std::mutex> g(m);
+        for (auto it = sent.rbegin(); it != sent.rend(); ++it)
+            if ((*it)["id"].is_number() && int((*it)["id"].num()) == id) return *it;
+        return json::Value();
+    };
+
+    auto r = ask("\"ping\"");
+    CHECK(r["ok"].is_bool() && r["ok"].boolean());
+
+    // Not a request; an unknown command; a missing argument; an unknown model.
+    CHECK(ctl.handle("not json"));
+    {
+        std::lock_guard<std::mutex> g(m);
+        CHECK(!sent.empty() && sent.back()["ok"].is_bool() && !sent.back()["ok"].boolean());
+    }
+    r = ask("\"nope\"");
+    CHECK(!r["ok"].boolean() && r["error"].str() == "unknown command: nope");
+    r = ask("\"dictation.download\"");
+    CHECK(!r["ok"].boolean() && r["error"].str() == "missing \"model\"");
+    r = ask("\"dictation.download\",\"model\":\"huge\"");
+    CHECK(!r["ok"].boolean());
+
+    // The settings, without anything sealed; the defaults of a first start.
+    r = ask("\"settings.get\"");
+    CHECK(r["ok"].boolean() && r["result"]["port"].num() == kDefaultPort);
+    CHECK(r["result"]["origins"].items().size() == 1 && r["result"]["origins"].items()[0].str() == kHostedClew);
+    CHECK(r["result"]["secret"].kind() == json::Value::Kind::Null);
+
+    // The secret stays the same until it is reset, and is never written by settings.apply.
+    auto s1 = ask("\"secret.get\"")["result"]["secret"].str();
+    CHECK(!s1.empty() && ask("\"secret.get\"")["result"]["secret"].str() == s1);
+    auto s2 = ask("\"secret.reset\"")["result"]["secret"].str();
+    CHECK(!s2.empty() && s2 != s1);
+    auto k1 = ask("\"sttKey.get\"")["result"]["key"].str();
+    CHECK(starts_with(k1, "stt.local."));
+    CHECK(starts_with(ask("\"analysisKey.get\"")["result"]["key"].str(), "ana."));
+
+    // A folder and a free port: the server starts; Stop and Start as the window's buttons.
+    int port = 40000 + std::rand() % 9000;
+    std::string folder = path_to_utf8(dir / "audio");
+    std::string esc;
+    for (char c : folder) esc += c == '\\' ? std::string("\\\\") : std::string(1, c);
+    r = ask("\"settings.apply\",\"settings\":{\"folders\":[{\"path\":\"" + esc + "\",\"enabled\":true}],\"port\":" +
+            std::to_string(port) + ",\"secret\":{\"kind\":\"file\",\"data\":\"eA==\"},\"linkHours\":9999}");
+    CHECK(r["ok"].boolean() && r["result"]["problem"].str().empty());
+    CHECK(r["result"]["settings"]["port"].num() == port);
+    CHECK(r["result"]["settings"]["linkHours"].num() == kDefaultLinkHours);  // out of range: the default
+    CHECK(ask("\"secret.get\"")["result"]["secret"].str() == s2);           // not taken from the patch
+    auto st = ask("\"status\"")["result"];
+    CHECK(st["server"]["running"].boolean() && st["server"]["port"].num() == port);
+    CHECK(st["server"]["folders"].items().size() == 1);
+    CHECK(st["dictation"]["state"].is_string() && st["analysis"]["state"].is_string());
+    ask("\"server.stop\"");
+    CHECK(!ask("\"status\"")["result"]["server"]["running"].boolean());
+    CHECK(ask("\"server.start\"")["result"]["problem"].str().empty());
+    CHECK(ask("\"status\"")["result"]["server"]["running"].boolean());
+    // Saved: a new start reads the same folder and port.
+    CHECK(Settings::load(dir / "settings.json").port == port);
+
+    // The models list, as the Dictation tab shows it.
+    r = ask("\"dictation.models\"");
+    CHECK(r["result"]["models"].items().size() == sizeof kSttModels / sizeof kSttModels[0]);
+    CHECK(r["result"]["models"].items()[0]["name"].str() == "tiny");
+
+    // A status event follows the changes.
+    bool saw_status = false;
+    for (int i = 0; i < 50 && !saw_status; ++i) {
+        {
+            std::lock_guard<std::mutex> g(m);
+            for (const auto& v : sent) saw_status = saw_status || v["event"].str() == "status";
+        }
+        if (!saw_status) std::this_thread::sleep_for(std::chrono::milliseconds(20));
+    }
+    CHECK(saw_status);
+
+    r = ask("\"quit\"");
+    CHECK(r["ok"].boolean());
+    svc.on_change(nullptr);
+    svc.stop();
+}
+
 int main() {
     fs::path tmp = fs::temp_directory_path() / ("clew-unit-" + std::to_string(std::rand()) +
                                                  std::to_string(reinterpret_cast<std::uintptr_t>(&failures) & 0xFFFF));
@@ -527,6 +633,7 @@ int main() {
     dictation_helpers(tmp);
     analysis_settings(tmp);
     analysis_lines();
+    control_protocol(tmp);
     updates(tmp);
     std::error_code ec;
     fs::remove_all(tmp, ec);

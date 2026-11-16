@@ -4,6 +4,7 @@
 #include <condition_variable>
 #include <mutex>
 
+#include "control.h"
 #include "files.h"
 #include "platform.h"
 #include "service.h"
@@ -17,6 +18,9 @@ const char* const kHeadlessHelp =
     "\n"
     "  clew-audio-server                 the tray icon and the settings window (Windows)\n"
     "  clew-audio-server --headless      no window; output on the console\n"
+    "  clew-audio-server --control       driven by another program over stdin/stdout, one JSON per line\n"
+    "                                    (Clew Desktop; core/control.h). Takes --config, --stt-program\n"
+    "                                    and --analysis-program\n"
     "\n"
     "With --headless (each option for this run only; the settings window's values are the defaults):\n"
     "  --folder <path>        a folder to serve (repeatable; replaces the window's list for this run)\n"
@@ -99,6 +103,8 @@ bool take(const std::vector<std::string>& args, std::size_t& i, std::string* val
 }  // namespace
 
 int run_headless(const std::vector<std::string>& args, const Console& console) {
+    for (const auto& a : args)
+        if (a == "--control") return run_control(args, console);
     std::string config, cache_dir, ffmpeg, value;
     std::vector<FolderSetting> folders;
     std::string stt_model, stt_models_dir, stt_language, stt_download, stt_program;

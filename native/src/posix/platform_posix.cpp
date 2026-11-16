@@ -7,24 +7,35 @@
 //   - conversion with the system's own codecs: macOS AudioToolbox (decodes, but has no mp3 encoder;
 //     would produce m4a); Linux has none (GStreamer is optional). Until then: ffmpeg only.
 //   - the sandbox for the converter (macOS sandbox-exec profile; Linux seccomp or bubblewrap).
-//   - the dictation server as a child (fork, a pipe each way, kill on exit); start_child says
-//     "not on this system yet" until then.
+//
+// Child processes (dictation, analysis) mirror the Windows ones: one pipe in (the key, then
+// closed), stdout and stderr together on one pipe out, read line by line on a thread of their own.
+// A process group stands in for the job object, so stop() ends the child and whatever it started;
+// on Linux the child also dies with this program (PR_SET_PDEATHSIG), and its memory is capped with
+// RLIMIT_DATA. macOS has neither: a child outlives a killed parent there, and is not capped.
 #include <fcntl.h>
 #include <signal.h>
+#include <sys/resource.h>
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <unistd.h>
 
+#include <atomic>
+#include <cerrno>
 #include <cstdlib>
+#include <cstring>
 #include <fstream>
+#include <mutex>
 #include <stdexcept>
+#include <thread>
 #include <vector>
 
 #if defined(__APPLE__)
 #include <mach-o/dyld.h>
 #include <stdlib.h>  // arc4random_buf
 #else
+#include <sys/prctl.h>
 #include <sys/random.h>
 #endif
 
@@ -146,11 +157,167 @@ fs::path find_ffmpeg() {
     return {};
 }
 
-std::unique_ptr<Child> start_child(const fs::path&, const std::vector<std::string>&, const std::string&,
-                                   std::uint64_t, std::function<void(const std::string&)>, std::function<void(int)>,
+namespace {
+
+class PosixChild final : public Child {
+public:
+    PosixChild(pid_t pid, int output, std::function<void(const std::string&)> on_line, std::function<void(int)> on_exit)
+        : pid_(pid), output_(output) {
+        reader_ = std::thread([this, on_line = std::move(on_line), on_exit = std::move(on_exit)] {
+            std::string pending;
+            char buf[4096];
+            for (;;) {
+                ssize_t n = ::read(output_, buf, sizeof buf);
+                if (n < 0 && errno == EINTR) continue;
+                if (n <= 0) break;
+                pending.append(buf, std::size_t(n));
+                std::size_t end;
+                while ((end = pending.find('\n')) != std::string::npos) {
+                    std::string line = pending.substr(0, end);
+                    if (!line.empty() && line.back() == '\r') line.pop_back();
+                    pending.erase(0, end + 1);
+                    if (on_line) on_line(line);
+                }
+                if (pending.size() > 65536) pending.clear();  // a line that never ends is not one
+            }
+            if (!pending.empty() && on_line) on_line(pending);
+            ::close(output_);
+            int status = 0;
+            pid_t r;
+            do r = waitpid(pid_, &status, 0);
+            while (r < 0 && errno == EINTR);
+            {
+                std::lock_guard<std::mutex> g(lock_);
+                reaped_ = true;  // from here on the pid may belong to someone else: never signal it
+            }
+            int code = r == pid_ && WIFEXITED(status) ? WEXITSTATUS(status) : 1;
+            if (on_exit) on_exit(code);
+        });
+    }
+
+    ~PosixChild() override {
+        stop();
+        if (reader_.joinable()) reader_.join();
+    }
+
+    // The whole group, as TerminateJobObject ends the whole job.
+    void stop() override {
+        std::lock_guard<std::mutex> g(lock_);
+        if (!reaped_) ::kill(-pid_, SIGKILL);
+    }
+
+private:
+    pid_t pid_;
+    int output_;
+    std::mutex lock_;
+    bool reaped_ = false;
+    std::thread reader_;
+};
+
+bool make_pipe(int fds[2]) {
+#if defined(__APPLE__)
+    if (::pipe(fds) != 0) return false;
+    for (int i = 0; i < 2; ++i) ::fcntl(fds[i], F_SETFD, FD_CLOEXEC);
+    return true;
+#else
+    return ::pipe2(fds, O_CLOEXEC) == 0;
+#endif
+}
+
+}  // namespace
+
+std::unique_ptr<Child> start_child(const fs::path& exe, const std::vector<std::string>& args,
+                                   const std::string& input, std::uint64_t memory_limit,
+                                   std::function<void(const std::string&)> on_line, std::function<void(int)> on_exit,
                                    std::string* why) {
-    if (why) *why = "not on this system yet";
-    return nullptr;
+    int in[2], out[2], failed[2];  // `failed`: exec's errno, if it never ran (closed by a successful exec)
+    if (!make_pipe(in)) {
+        if (why) *why = "no pipe";
+        return nullptr;
+    }
+    if (!make_pipe(out)) {
+        ::close(in[0]);
+        ::close(in[1]);
+        if (why) *why = "no pipe";
+        return nullptr;
+    }
+    if (!make_pipe(failed)) {
+        for (int fd : {in[0], in[1], out[0], out[1]}) ::close(fd);
+        if (why) *why = "no pipe";
+        return nullptr;
+    }
+
+    // Everything the child needs, prepared before fork: only async-signal-safe calls after it.
+    std::string program = exe.string();
+    std::string dir = exe.parent_path().string();
+    std::vector<std::string> argv_s;
+    argv_s.push_back(program);
+    for (const auto& a : args) argv_s.push_back(a);
+    std::vector<char*> argv;
+    for (auto& a : argv_s) argv.push_back(a.data());
+    argv.push_back(nullptr);
+    // Python writes its lines at once rather than when a buffer fills.
+    ::setenv("PYTHONUNBUFFERED", "1", 1);
+    ::setenv("PYTHONIOENCODING", "utf-8", 1);
+
+    pid_t pid = fork();
+    if (pid < 0) {
+        for (int fd : {in[0], in[1], out[0], out[1], failed[0], failed[1]}) ::close(fd);
+        if (why) *why = "could not start " + program + " (fork)";
+        return nullptr;
+    }
+    if (pid == 0) {
+        ::setpgid(0, 0);
+#if !defined(__APPLE__)
+        ::prctl(PR_SET_PDEATHSIG, SIGKILL);
+        if (memory_limit) {
+            struct rlimit lim{rlim_t(memory_limit), rlim_t(memory_limit)};
+            ::setrlimit(RLIMIT_DATA, &lim);
+        }
+#else
+        (void)memory_limit;
+#endif
+        ::signal(SIGPIPE, SIG_DFL);
+        ::dup2(in[0], 0);
+        ::dup2(out[1], 1);
+        ::dup2(out[1], 2);
+        if (::chdir(dir.c_str()) != 0) {
+            // Not fatal: the program finds its own files from its path.
+        }
+        ::execv(program.c_str(), argv.data());
+        int e = errno;
+        ssize_t ignored = ::write(failed[1], &e, sizeof e);
+        (void)ignored;
+        _exit(127);
+    }
+    ::setpgid(pid, pid);  // also from here, so a stop() right away reaches the group
+    ::close(in[0]);
+    ::close(out[1]);
+    ::close(failed[1]);
+    int exec_errno = 0;
+    ssize_t got;
+    do got = ::read(failed[0], &exec_errno, sizeof exec_errno);
+    while (got < 0 && errno == EINTR);
+    ::close(failed[0]);
+    if (got == sizeof exec_errno) {
+        ::close(in[1]);
+        ::close(out[0]);
+        int status = 0;
+        waitpid(pid, &status, 0);
+        if (why) *why = "could not start " + program + " (" + std::strerror(exec_errno) + ")";
+        return nullptr;
+    }
+    if (!input.empty()) {
+        std::size_t at = 0;
+        while (at < input.size()) {
+            ssize_t n = ::write(in[1], input.data() + at, input.size() - at);
+            if (n < 0 && errno == EINTR) continue;
+            if (n <= 0) break;
+            at += std::size_t(n);
+        }
+    }
+    ::close(in[1]);
+    return std::make_unique<PosixChild>(pid, out[0], std::move(on_line), std::move(on_exit));
 }
 
 fs::path find_stt_server() {
